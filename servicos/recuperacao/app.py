@@ -27,12 +27,40 @@ def buscar(consulta: Consulta):
     """Deve devolver os top_k trechos mais parecidos com a pergunta."""
     r = requests.get(f"{URL_INGESTAO}/indice", timeout=10)
     r.raise_for_status()
-    itens = r.json()["itens"]
+    dados_indice = r.json()
+    itens = dados_indice.get("itens", [])
 
-    # TAREFA 2: vetorize a pergunta, calcule a similaridade com cada item
-    # e devolva os top_k mais parecidos.
-    # DICA: use Vetorizador + similaridade() de servicos/comum/embeddings.py
-    raise NotImplementedError("implemente a busca por similaridade")
+    if not itens:
+        return {"resultados": []}
+
+    # Extrai todos os textos para ajustar o vetorizador com o mesmo vocabulário
+    textos = [item["texto"] for item in itens]
+    
+    vetorizador = Vetorizador()
+    vetorizador.ajustar(textos)
+
+    # Vetoriza a pergunta enviada pelo usuário
+    vetor_pergunta = vetorizador.vetorizar(consulta.pergunta)
+
+    # Calcula a similaridade de cada item com a pergunta
+    resultados = []
+    for item in itens:
+        vetor_item = item.get("vetor")
+        if not vetor_item:
+            vetor_item = vetorizador.vetorizar(item["texto"])
+            
+        sim = similaridade(vetor_item, vetor_pergunta)
+        resultados.append({
+            "texto": item["texto"],
+            "origem": item["origem"],
+            "similaridade": sim
+        })
+
+    # Ordena por similaridade decrescente e pega os top_k
+    resultados.sort(key=lambda x: x["similaridade"], reverse=True)
+    top_resultados = resultados[:consulta.top_k]
+
+    return {"resultados": top_resultados}
 
 
 @app.get("/saude")
