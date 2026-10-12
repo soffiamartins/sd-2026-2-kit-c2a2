@@ -8,7 +8,7 @@ Rodar: uvicorn servicos.geracao.app:app --port 8003
 import os
 
 import requests
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from servicos.comum.circuit_breaker import CircuitBreaker, CircuitoAberto
@@ -31,9 +31,14 @@ def perguntar(p: Pergunta):
     r.raise_for_status()
     contexto = [t["texto"] for t in r.json()["resultados"]]
 
-    # TAREFA 3: envolva a chamada gerar(...) com disjuntor.chamar(...)
-    # e trate CircuitoAberto devolvendo 503 com mensagem clara.
-    resposta = gerar(p.pergunta, contexto)
+    try:
+        # Protege a chamada do LLM usando o circuit breaker
+        resposta = disjuntor.chamar(gerar, p.pergunta, contexto)
+    except CircuitoAberto:
+        raise HTTPException(
+            status_code=503,
+            detail="Serviço de LLM temporariamente indisponível (Circuit Breaker aberto)."
+        )
 
     return {"pergunta": p.pergunta, "resposta": resposta, "contexto": contexto}
 
